@@ -1,8 +1,7 @@
 #include "../headers/traceroute.h"
 
 int main(int argc, char *argv[]) {
-    for(int i = 0; i < argc; i++) {
-        std::cout << "Argument " << i << " is: " << argv[i] << std::endl;
-    }
+    Traceroute traceroute(argv[1], argv[0]);
+    traceroute.run();
     return 0;
 }
