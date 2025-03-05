@@ -13,6 +13,8 @@
 #include <netinet/ip_icmp.h>
 #include <netinet/udp.h>
 #include <array>
+#include <limits.h>
+#include <unistd.h>
 
 enum class PacketStatus {
     NOT_USED,
@@ -21,6 +23,7 @@ enum class PacketStatus {
     RECEIVED_END,
     DISPLAYED
 };
+
 
 class Query {
 public:

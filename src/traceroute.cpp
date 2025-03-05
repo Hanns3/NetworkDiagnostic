@@ -12,10 +12,11 @@ Traceroute::Traceroute(char* destination, char* path) {
     data.tqueries = ((data.hops - data.sttl) * data.probe);
     data.port = 33434;
     data.sport = 33434;
-    data.sent = 0;
+    
     data.timeout.tv_sec = 5;
     data.timeout.tv_usec = 0;
     data.reached = 0;
+    data.sent = 0;
     data.dropped = 0;
     data.tprobe = 0;
     data.pend = 0;
@@ -53,11 +54,77 @@ void Traceroute::run() {
     std::cout << "Traceroute to " << data.address << " (" 
     << data.ipv4 << "), " << data.hops << " hops max, " << data.size 
     << " byte packets" << std::endl;
-    std::cout << "1\t" << data.ipv4 << std::endl;
 
     if(create_sockets() == -1)
-        exit(1);
+        return;
+    monitor();
+    clear_sockets();
+}
 
+void Traceroute::monitor() {
+    if(CURRENT_QUERY < data.tqueries && !data.reached && 
+        select(data.maxfd + 1, NULL, &data.udpfds, NULL, &data.timeout) > 0) {
+        if(iterate() < 0)
+            return;
+    }
+}
+
+int Traceroute::iterate() {
+    unsigned int i = 0;
+    while(i < data.squeries) {
+        if(FD_ISSET(data.udp_sockets[i], &data.udpfds) && CURRENT_QUERY < data.tqueries) {
+            if(send_packet(data.udp_sockets[i]) == -2)
+                return -1;
+            data.sent++;
+            data.ttl = data.sttl + ((CURRENT_QUERY) / data.probe);
+            data.port++;
+        }
+        i++;
+    }
+    return 0;
+}
+
+int Traceroute::send_packet(int rsocket) {
+    char buffer[data.size];
+    unsigned int i = 0;
+    int frag =  IP_PMTUDISC_DONT;
+
+    while(i < data.size) {
+        buffer[i] = 0x40 + i;
+        i++;
+    }
+
+    data.servaddr->sin_port = htons(data.port);
+    data.servaddr->sin_family = AF_INET;
+    data.host_addr = (struct sockaddr*) data.servaddr;
+    
+    // Checking port
+    if(data.port > USHRT_MAX) {
+        std::cerr << "Error: port number is too high" << std::endl;
+        return -2;
+    }
+
+    // Setting TTL
+    if(setsockopt(rsocket, SOL_IP, IP_TTL, &data.ttl, sizeof(data.ttl)) != 0) {
+        std::cerr << "Error: unable to set TTL" << std::endl;
+        return -2;
+    }
+    // Setting fragmentation
+    if(setsockopt(rsocket, IPPROTO_IP, IP_MTU_DISCOVER, &frag, sizeof(frag)) < 0) {
+        std::cerr << "Error: unable to set fragmentation" << std::endl;
+        return -2;
+    }
+    // Sending packet
+    if(sendto(rsocket, buffer, data.size, 0, data.host_addr, sizeof(struct sockaddr)) < 0) {
+        std::cerr << "Error: unable to send packet" << std::endl;
+        return -2;
+    }
+    data.queries[CURRENT_QUERY].port = data.port;
+    data.queries[CURRENT_QUERY].ttl = data.ttl;
+    data.queries[CURRENT_QUERY].status = PacketStatus::SENT;
+    gettimeofday(&data.queries[CURRENT_QUERY].sentTime, NULL);
+
+    return rsocket;
 }
 
 int Traceroute::create_sockets() {
@@ -83,6 +150,17 @@ int Traceroute::create_sockets() {
     if(data.icmp_socket > data.maxfd)
         data.maxfd = data.icmp_socket;
     return 0;
+}
+
+void Traceroute::clear_sockets() {
+    unsigned int i = 0;
+    while(i < data.squeries) {
+        FD_CLR(data.udp_sockets[i], &data.udpfds);
+        close(data.udp_sockets[i]);
+        i++;
+    }
+    FD_CLR(data.icmp_socket, &data.icmpfds);
+    close(data.icmp_socket);
 }
 
 Traceroute::~Traceroute() {
