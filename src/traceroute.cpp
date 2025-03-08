@@ -10,8 +10,8 @@ Traceroute::Traceroute(char* destination, char* path) {
     data.sttl = 1;
     data.squeries = 16;
     data.tqueries = ((data.hops - data.sttl) * data.probe);
-    data.port = 33434;
-    data.sport = 33434;
+    data.port = 22222;
+    data.sport = 22222;
     
     data.timeout.tv_sec = 5;
     data.timeout.tv_usec = 0;
@@ -67,6 +67,7 @@ void Traceroute::monitor() {
         if(iterate() < 0)
             return;
     }
+    receive();
 }
 
 int Traceroute::iterate() {
@@ -123,8 +124,117 @@ int Traceroute::send_packet(int rsocket) {
     data.queries[CURRENT_QUERY].ttl = data.ttl;
     data.queries[CURRENT_QUERY].status = PacketStatus::SENT;
     gettimeofday(&data.queries[CURRENT_QUERY].sentTime, NULL);
+    std::cout << "CURRENT_QUERY: " << CURRENT_QUERY << " queries[CURRENT_QUERY].port:" 
+    << data.queries[CURRENT_QUERY].port << " rsocket: " << rsocket << std::endl;
 
     return rsocket;
+}
+
+void Traceroute::print_packet_data(const void* data, size_t length) {
+    const unsigned char* byte = (const unsigned char*) data;
+    for (size_t i = 0; i < length; i++) {
+        std::cout << std::hex << std::setw(2) << std::setfill('0') 
+                  << (int) byte[i] << " ";
+        if ((i + 1) % 16 == 0) std::cout << std::endl;
+    }
+    std::cout << std::dec << std::endl;
+}
+
+
+void Traceroute::receive() {
+    unsigned int i = 0;
+    unsigned int rec = 0;
+
+    if(FD_ISSET(data.icmp_socket, &data.icmpfds)) {
+        while (rec < data.sent)
+        {
+            if(receive_packet(data.icmp_socket) > 0) {
+                rec++;
+            }
+            i++;
+        }
+    }
+}
+
+int Traceroute::fill_query(Packet rec_packet, struct sockaddr_in* rec_addr) {
+    unsigned int port;
+    uint8_t type = 0;
+    struct iphdr *ip_hdr;
+    struct icmphdr *icmp_hdr;
+    struct udphdr *udp_hdr;
+    unsigned int index;
+    struct timeval end_time;
+    
+    std::cout << "Received raw packet data:" << std::endl;
+    print_packet_data(&rec_packet, sizeof(rec_packet)); // Print received packet
+
+
+    if(gettimeofday(&end_time, NULL) < 0) {
+        std::cerr << "Error: unable to set packet receiving time" << std::endl;
+        return -1;
+    }
+    icmp_hdr = (struct icmphdr*) (&rec_packet.content.header);
+    ip_hdr = (struct iphdr*) (&rec_packet.content.msg);
+    udp_hdr = (struct udphdr*) ((void*) ip_hdr + sizeof(struct iphdr));
+    
+    port = ntohs(udp_hdr->dest);
+    type = icmp_hdr->type;
+    std::cout << "Extracter UDP destination port: " << port << " size of icmphdr: " 
+    << sizeof(icmphdr) << " size of iphdr: " << sizeof(iphdr) << std::endl;
+    index = get_packet_index(port);
+    if(index >= data.tqueries) {
+        std::cerr << "Error: unable to find packet index" << std::endl;
+        return -1;
+    }
+
+    strncpy(data.queries[index].ipv4, inet_ntoa(rec_addr->sin_addr), INET_ADDRSTRLEN);
+    data.queries[index].receivedTime.tv_sec = end_time.tv_sec;
+    data.queries[index].receivedTime.tv_usec = end_time.tv_usec;
+    if(type == ICMP_TIME_EXCEEDED) {
+        data.queries[index].status = PacketStatus::RECEIVED;
+    } else if(type == ICMP_DEST_UNREACH) {
+        data.queries[index].status = PacketStatus::RECEIVED_END;
+        data.reached = 1;
+    }
+    return 1;
+}
+
+int Traceroute::receive_packet(int rsocket) {
+    Packet rec_packet;
+    struct sockaddr rec_addr;
+    socklen_t rec_len = sizeof(rec_addr);
+    int flags;
+    if(data.dropped) {
+        flags = MSG_DONTWAIT;
+    } else flags = 0;
+
+    if(setsockopt(rsocket, SOL_SOCKET, SO_RCVTIMEO, &data.timeout, sizeof(data.timeout)) < 0) {
+        std::cerr << "Error: unable to set receiver's timeout" << std::endl;
+        return -1;
+    }
+
+    memset(&rec_packet, 0, sizeof(rec_packet));
+    memset(&rec_addr, 0, sizeof(rec_addr));
+
+    if(recvfrom(rsocket, &rec_packet, sizeof(rec_packet), flags, &rec_addr, &rec_len) < 0) {
+        std::cerr << "Error: unable to receive packet" << std::endl;
+        data.dropped = 1;
+        return 1;
+    }
+    return fill_query(rec_packet, (struct sockaddr_in*) &rec_addr);
+}
+
+
+
+int Traceroute::get_packet_index(int port) {
+    unsigned int i = 0;
+    while(i < data.tqueries) {
+        if(data.queries[i].port == port) {
+            return i;
+        }
+        i++;
+    }
+    return i;
 }
 
 int Traceroute::create_sockets() {

@@ -12,9 +12,10 @@
 #include <sys/time.h>
 #include <netinet/ip_icmp.h>
 #include <netinet/udp.h>
-#include <array>
 #include <limits.h>
 #include <unistd.h>
+#include <iomanip>
+
 
 enum class PacketStatus {
     NOT_USED,
@@ -79,32 +80,21 @@ public:
 class ICMPPacket {
 public:
     struct icmphdr header;
-    std::array<char, 60 - sizeof(struct icmphdr)> msg;
-
-    ICMPPacket() {
-        memset(&header, 0, sizeof(struct icmphdr));
-        memset(&msg, 0, sizeof(msg));
-    }
+    char msg[60 - sizeof(struct icmphdr)];
 };
 
 class UDPPacket {
 public:
     struct udphdr header;
-    std::array<char, 60 - sizeof(struct udphdr)> msg;
+    char msg[60 - sizeof(struct udphdr)];
 
-    UDPPacket() {
-        memset(&header, 0, sizeof(struct udphdr));
-        memset(&msg, 0, sizeof(msg));
-    }
 };
 
 class Packet {
 public:
     struct iphdr ip_header;
     ICMPPacket content;
-    Packet() {
-        memset(&ip_header, 0, sizeof(struct iphdr));
-    }
+
 };
 
 #endif
