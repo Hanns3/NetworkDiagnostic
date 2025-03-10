@@ -5,13 +5,13 @@ Traceroute::Traceroute(char* destination, char* path) {
     data.path = path;
     data.hops = 30;
     data.size = 32;
-    data.probe = 3;
+    data.probe = 1;
     data.ttl = 1;
     data.sttl = 1;
     data.squeries = 16;
     data.tqueries = ((data.hops - data.sttl) * data.probe);
-    data.port = 22222;
-    data.sport = 22222;
+    data.port = 33333;
+    data.sport = 33333;
     
     data.timeout.tv_sec = 5;
     data.timeout.tv_usec = 0;
@@ -20,6 +20,7 @@ Traceroute::Traceroute(char* destination, char* path) {
     data.dropped = 0;
     data.tprobe = 0;
     data.pend = 0;
+    data.cprobe = 0;
     data.udp_sockets.resize(data.squeries);
     data.queries.resize(data.tqueries);
     FD_ZERO(&data.udpfds);
@@ -27,6 +28,7 @@ Traceroute::Traceroute(char* destination, char* path) {
     data.maxfd = 0;
     data.icmp_socket = 0;
     data.host_info = NULL;
+
 }
 
 void Traceroute::resolve() {
@@ -50,6 +52,7 @@ void Traceroute::resolve() {
 }
 
 void Traceroute::run() {
+    unsigned int i = 0;
     resolve();
     std::cout << "Traceroute to " << data.address << " (" 
     << data.ipv4 << "), " << data.hops << " hops max, " << data.size 
@@ -57,21 +60,27 @@ void Traceroute::run() {
 
     if(create_sockets() == -1)
         return;
-    monitor();
+    while(!(i = monitor()));
+    
     clear_sockets();
 }
 
-void Traceroute::monitor() {
-    if(CURRENT_QUERY < data.tqueries && !data.reached && 
-        select(data.maxfd + 1, NULL, &data.udpfds, NULL, &data.timeout) > 0) {
+int Traceroute::monitor() {
+    if(CURRENT_QUERY < data.tqueries && 
+        select(data.maxfd + 1, NULL, &data.udpfds, NULL, &data.timeout))  
+    {
         if(iterate() < 0)
-            return;
+            return 1;
     }
     receive();
+    Print print;
+    std::cout << "Sent " << data.sent << " packets" <<  " CURRENT_QUERY: " << CURRENT_QUERY << std::endl;
+    return print.print_everything(data);
 }
 
 int Traceroute::iterate() {
     unsigned int i = 0;
+    std::cout << "Data port: " << data.port << " Data sport: " << data.sport << std::endl;
     while(i < data.squeries) {
         if(FD_ISSET(data.udp_sockets[i], &data.udpfds) && CURRENT_QUERY < data.tqueries) {
             if(send_packet(data.udp_sockets[i]) == -2)
@@ -124,22 +133,9 @@ int Traceroute::send_packet(int rsocket) {
     data.queries[CURRENT_QUERY].ttl = data.ttl;
     data.queries[CURRENT_QUERY].status = PacketStatus::SENT;
     gettimeofday(&data.queries[CURRENT_QUERY].sentTime, NULL);
-    std::cout << "CURRENT_QUERY: " << CURRENT_QUERY << " queries[CURRENT_QUERY].port:" 
-    << data.queries[CURRENT_QUERY].port << " rsocket: " << rsocket << std::endl;
 
     return rsocket;
 }
-
-void Traceroute::print_packet_data(const void* data, size_t length) {
-    const unsigned char* byte = (const unsigned char*) data;
-    for (size_t i = 0; i < length; i++) {
-        std::cout << std::hex << std::setw(2) << std::setfill('0') 
-                  << (int) byte[i] << " ";
-        if ((i + 1) % 16 == 0) std::cout << std::endl;
-    }
-    std::cout << std::dec << std::endl;
-}
-
 
 void Traceroute::receive() {
     unsigned int i = 0;
@@ -164,10 +160,6 @@ int Traceroute::fill_query(Packet rec_packet, struct sockaddr_in* rec_addr) {
     struct udphdr *udp_hdr;
     unsigned int index;
     struct timeval end_time;
-    
-    std::cout << "Received raw packet data:" << std::endl;
-    print_packet_data(&rec_packet, sizeof(rec_packet)); // Print received packet
-
 
     if(gettimeofday(&end_time, NULL) < 0) {
         std::cerr << "Error: unable to set packet receiving time" << std::endl;
@@ -179,8 +171,6 @@ int Traceroute::fill_query(Packet rec_packet, struct sockaddr_in* rec_addr) {
     
     port = ntohs(udp_hdr->dest);
     type = icmp_hdr->type;
-    std::cout << "Extracter UDP destination port: " << port << " size of icmphdr: " 
-    << sizeof(icmphdr) << " size of iphdr: " << sizeof(iphdr) << std::endl;
     index = get_packet_index(port);
     if(index >= data.tqueries) {
         std::cerr << "Error: unable to find packet index" << std::endl;
@@ -216,7 +206,7 @@ int Traceroute::receive_packet(int rsocket) {
     memset(&rec_packet, 0, sizeof(rec_packet));
     memset(&rec_addr, 0, sizeof(rec_addr));
 
-    if(recvfrom(rsocket, &rec_packet, sizeof(rec_packet), flags, &rec_addr, &rec_len) < 0) {
+    if(recvfrom(rsocket, &rec_packet, sizeof(rec_packet), flags, &rec_addr, &rec_len) <= 0) {
         std::cerr << "Error: unable to receive packet" << std::endl;
         data.dropped = 1;
         return 1;
