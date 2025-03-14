@@ -5,13 +5,13 @@ Traceroute::Traceroute(char* destination, char* path) {
     data.path = path;
     data.hops = 30;
     data.size = 32;
-    data.probe = 1;
+    data.probe = 3;
     data.ttl = 1;
     data.sttl = 1;
     data.squeries = 16;
     data.tqueries = ((data.hops - data.sttl) * data.probe);
-    data.port = 33333;
-    data.sport = 33333;
+    data.port = 33434;
+    data.sport = 33434;
     
     data.timeout.tv_sec = 5;
     data.timeout.tv_usec = 0;
@@ -66,7 +66,9 @@ void Traceroute::run() {
 }
 
 int Traceroute::monitor() {
-    if(CURRENT_QUERY < data.tqueries && 
+    data.dropped = 0;
+    data.sent = 0;
+    if(CURRENT_QUERY < data.tqueries && !data.reached &&
         select(data.maxfd + 1, NULL, &data.udpfds, NULL, &data.timeout))  
     {
         if(iterate() < 0)
@@ -74,13 +76,11 @@ int Traceroute::monitor() {
     }
     receive();
     Print print;
-    std::cout << "Sent " << data.sent << " packets" <<  " CURRENT_QUERY: " << CURRENT_QUERY << std::endl;
     return print.print_everything(data);
 }
 
 int Traceroute::iterate() {
     unsigned int i = 0;
-    std::cout << "Data port: " << data.port << " Data sport: " << data.sport << std::endl;
     while(i < data.squeries) {
         if(FD_ISSET(data.udp_sockets[i], &data.udpfds) && CURRENT_QUERY < data.tqueries) {
             if(send_packet(data.udp_sockets[i]) == -2)
@@ -138,16 +138,12 @@ int Traceroute::send_packet(int rsocket) {
 }
 
 void Traceroute::receive() {
-    unsigned int i = 0;
     unsigned int rec = 0;
-
     if(FD_ISSET(data.icmp_socket, &data.icmpfds)) {
-        while (rec < data.sent)
-        {
+        while (rec < data.sent){
             if(receive_packet(data.icmp_socket) > 0) {
                 rec++;
             }
-            i++;
         }
     }
 }
@@ -180,6 +176,7 @@ int Traceroute::fill_query(Packet rec_packet, struct sockaddr_in* rec_addr) {
     strncpy(data.queries[index].ipv4, inet_ntoa(rec_addr->sin_addr), INET_ADDRSTRLEN);
     data.queries[index].receivedTime.tv_sec = end_time.tv_sec;
     data.queries[index].receivedTime.tv_usec = end_time.tv_usec;
+
     if(type == ICMP_TIME_EXCEEDED) {
         data.queries[index].status = PacketStatus::RECEIVED;
     } else if(type == ICMP_DEST_UNREACH) {
