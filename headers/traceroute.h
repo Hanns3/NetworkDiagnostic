@@ -26,7 +26,7 @@ public:
     void receive();
     int receive_packet(int rsocket);
     int fill_query(Packet rec_packet, struct sockaddr_in* rec_addr);
-    int get_packet_index(int port);
+    int get_packet_index(unsigned int port);
 };
 
 #endif

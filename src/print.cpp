@@ -95,7 +95,6 @@ int Print::print_everything(TracerouteData& data) {
         }
         i++;
     }
-    std::cout << " data reached: " << int(data.reached) << std::endl;
     if(CURRENT_QUERY >= data.tqueries || data.reached) {
         std::cout << std::endl;
         return 1;

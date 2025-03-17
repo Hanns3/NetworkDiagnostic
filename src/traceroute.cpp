@@ -163,7 +163,7 @@ int Traceroute::fill_query(Packet rec_packet, struct sockaddr_in* rec_addr) {
     }
     icmp_hdr = (struct icmphdr*) (&rec_packet.content.header);
     ip_hdr = (struct iphdr*) (&rec_packet.content.msg);
-    udp_hdr = (struct udphdr*) ((void*) ip_hdr + sizeof(struct iphdr));
+    udp_hdr = (struct udphdr*) ((char*) ip_hdr + sizeof(struct iphdr));
     
     port = ntohs(udp_hdr->dest);
     type = icmp_hdr->type;
@@ -204,7 +204,6 @@ int Traceroute::receive_packet(int rsocket) {
     memset(&rec_addr, 0, sizeof(rec_addr));
 
     if(recvfrom(rsocket, &rec_packet, sizeof(rec_packet), flags, &rec_addr, &rec_len) <= 0) {
-        std::cerr << "Error: unable to receive packet" << std::endl;
         data.dropped = 1;
         return 1;
     }
@@ -213,7 +212,7 @@ int Traceroute::receive_packet(int rsocket) {
 
 
 
-int Traceroute::get_packet_index(int port) {
+int Traceroute::get_packet_index(unsigned int port) {
     unsigned int i = 0;
     while(i < data.tqueries) {
         if(data.queries[i].port == port) {
