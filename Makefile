@@ -5,14 +5,13 @@ CXXFLAGS := -Wall -Wextra -std=c++11 -g
 # Directories
 SRC_DIR := src
 BUILD_DIR := build
-BIN_DIR := bin
 
 # Find all .cpp files in src/ and generate corresponding .o files in build/
 SRC_FILES := $(wildcard $(SRC_DIR)/*.cpp)
 OBJ_FILES := $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(SRC_FILES))
 
 # Output executable
-TARGET := $(BIN_DIR)/my_traceroute
+TARGET := my_traceroute
 
 # Default rule
 all: $(TARGET)
@@ -35,6 +34,7 @@ $(BIN_DIR):
 # Clean build artifacts
 clean:
 	rm -rf $(BUILD_DIR) $(BIN_DIR)
+	rm my_traceroute
 
 # Print variables for debugging
 print:

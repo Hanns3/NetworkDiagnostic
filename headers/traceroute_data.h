@@ -39,6 +39,7 @@ public:
 class TracerouteData {
 public:
     std::string path;
+    std::string interface;
     char ipv4[INET_ADDRSTRLEN];
     struct addrinfo *host_info;
     struct sockaddr* host_addr;

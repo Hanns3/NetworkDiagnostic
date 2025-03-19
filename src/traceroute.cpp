@@ -1,17 +1,19 @@
 #include "../headers/traceroute.h"
 
-Traceroute::Traceroute(char* destination, char* path) {
+Traceroute::Traceroute(const char* path, const char* destination, 
+    const char* iface, unsigned int port) {
     data.address = destination;
     data.path = path;
+    data.interface = iface;
     data.hops = 30;
     data.size = 32;
-    data.probe = 3;
+    data.probe = 1;
     data.ttl = 1;
-    data.sttl = 1;
+    data.sttl = 3;
     data.squeries = 16;
     data.tqueries = ((data.hops - data.sttl) * data.probe);
-    data.port = 33434;
-    data.sport = 33434;
+    data.port = port;
+    data.sport = port;
     
     data.timeout.tv_sec = 5;
     data.timeout.tv_usec = 0;
@@ -232,6 +234,11 @@ int Traceroute::create_sockets() {
             std::cerr << "Error: unable to create sender's socket" << std::endl;
             return -1;
         }
+        if(setsockopt(data.udp_sockets[i], SOL_SOCKET, SO_BINDTODEVICE, data.interface.c_str(), strlen(data.interface.c_str())) < 0) {
+            std::cerr << "Error: unable to bind socket to device on interface: " << data.interface << std::endl;
+            return -1;
+        }
+
         FD_SET(data.udp_sockets[i], &data.udpfds);
         if(data.udp_sockets[i] > data.maxfd)
             data.maxfd = data.udp_sockets[i];
@@ -242,6 +249,12 @@ int Traceroute::create_sockets() {
         std::cerr << "Error: unable to create receiver's socket" << std::endl;
         return -1;
     }
+
+    if(setsockopt(data.icmp_socket, SOL_SOCKET, SO_BINDTODEVICE, data.interface.c_str(), strlen(data.interface.c_str())) < 0) {
+        std::cerr << "Error: unable to bind socket to device on interface: " << data.interface << std::endl;
+        return -1;
+    }
+
     FD_SET(data.icmp_socket, &data.icmpfds);
     if(data.icmp_socket > data.maxfd)
         data.maxfd = data.icmp_socket;

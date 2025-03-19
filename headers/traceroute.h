@@ -12,7 +12,7 @@ private:
     TracerouteData data;
 
 public:
-    Traceroute(char *destination, char *path);
+    Traceroute(const char *destination,const char *path, const char* iface, unsigned int port);
     ~Traceroute();
     friend class Print;
 

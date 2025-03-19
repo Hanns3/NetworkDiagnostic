@@ -32,7 +32,6 @@ void Print::print_query(Query& query, unsigned int counter, unsigned int probe) 
     if(counter < probe -1 ) {
         std::cout << " ";
     }
-    else std::cout << std::endl;
 }
 
 void Print::sort_queries(TracerouteData& data) {
